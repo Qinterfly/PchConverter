@@ -9,5 +9,6 @@ A simple program to convert an input Nastran punch and an analysis input files i
 ## Result files
 - Sparse stiffness matrix
 - Sparse mass matrix
+- Sparse damping matrix
 - Mapping file
 - Nodes coordinates
