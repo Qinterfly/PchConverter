@@ -113,6 +113,7 @@ int StructuralMatrix::write(string const& fileName, unsigned short outPrecision)
 		file << std::fixed << std::setw(outPrecision) << firstInd_[i] << std::setw(outPrecision) << secondInd_[i] << ' ';
 		file << std::scientific << '\t' << values_[i] << endl;
 	}
+	file.close();
 	return 0;
 }
 
@@ -129,6 +130,7 @@ int writeMappingMatrix(string const& fileName, int size, vector<int> const& vecE
 		file << std::setw(outPrecision) << i + 1;
 		file << std::setw(outPrecision) << vecEquNodes[i] << std::setw(outPrecision) << dofsNames[vecEquDofs[i] - 1] << endl;
 	}
+	file.close();
 	return 0;
 }
 
@@ -145,6 +147,7 @@ int writeNodes(string const& fileName, vector<int> const& indexes, vector<double
 		file << std::fixed << std::setw(outPrecision) << indexes[i];
 		file << std::scientific << '\t' << XCoord[i] << '\t' << YCoord[i] << '\t' << ZCoord[i] << endl;
 	}
+	file.close();
 	return 0;
 }
 
