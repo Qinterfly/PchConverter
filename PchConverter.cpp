@@ -126,6 +126,7 @@ int writeMappingMatrix(string const& fileName, int size, vector<int> const& vecE
 		return -1;
 	}
 	vector<string> const dofsNames = { "UX", "UY", "UZ", "ROTX", "ROTY", "ROTZ" };
+	file << std::setw(outPrecision) << "Matrix Eqn" << std::setw(outPrecision) << "Node" << std::setw(outPrecision) << "DOF" << endl;
 	for (int i = 0; i != size; ++i) {
 		file << std::setw(outPrecision) << i + 1;
 		file << std::setw(outPrecision) << vecEquNodes[i] << std::setw(outPrecision) << dofsNames[vecEquDofs[i] - 1] << endl;
