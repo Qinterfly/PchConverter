@@ -67,13 +67,13 @@ void StructuralMatrix::resize(long size) {
 
 // Sorting the structural matrix by the column index
 void StructuralMatrix::sortByColumn() {
-	std::vector<int> sortIndexes(size_);
+	vector<int> sortIndexes(size_);
 	std::iota(sortIndexes.begin(), sortIndexes.end(), 0);
 	// Copying the current vectors in order to sort them later
-	std::vector<int> vecFirst = firstInd_;
-	std::vector<int> vecSecond = secondInd_;
-	std::vector<double> vecValues = values_;
-	// Sorting by column index 
+	vector<int> vecFirst = firstInd_;
+	vector<int> vecSecond = secondInd_;
+	vector<double> vecValues = values_;
+	// Sorting by the column index 
 	std::stable_sort(sortIndexes.begin(), sortIndexes.end(), [&vecSecond](int i, int j) { return vecSecond[i] < vecSecond[j]; });
 	int tInd = 0;
 	for (int i = 0; i != size_; ++i) {
