@@ -11,6 +11,8 @@
 #include <chrono>
 #include <unordered_map>
 #include <iomanip>    
+#include <algorithm>
+#include <numeric>
 
 using std::vector;
 using std::string;
@@ -41,6 +43,7 @@ public:
 	int size() const { return size_; } // Get the size of the matrix
 	// Managing methods
 	void resize(long size); // Change the size of the matrix
+	void sortByColumn(); // Sort the matrix by the column index
 	// In-out methods
 	int write(string const& fileName, unsigned short outPrecision) const; // Write the matrix
 	// Get the elements of the matrix
@@ -60,6 +63,25 @@ void StructuralMatrix::resize(long size) {
 	firstInd_.resize(size_);
 	secondInd_.resize(size_);
 	values_.resize(size_);
+}
+
+// Sorting the structural matrix by the column index
+void StructuralMatrix::sortByColumn() {
+	std::vector<int> sortIndexes(size_);
+	std::iota(sortIndexes.begin(), sortIndexes.end(), 0);
+	// Copying the current vectors in order to sort them later
+	std::vector<int> vecFirst = firstInd_;
+	std::vector<int> vecSecond = secondInd_;
+	std::vector<double> vecValues = values_;
+	// Sorting by column index 
+	std::stable_sort(sortIndexes.begin(), sortIndexes.end(), [&vecSecond](int i, int j) { return vecSecond[i] < vecSecond[j]; });
+	int tInd = 0;
+	for (int i = 0; i != size_; ++i) {
+		tInd = sortIndexes[i];
+		firstInd_[i] = vecFirst[tInd];
+		secondInd_[i] = vecSecond[tInd];
+		values_[i] = vecValues[tInd];
+	}
 }
 
 // Get the type of the strutural matrix
@@ -347,6 +369,14 @@ int main(){
 	filePch.close();
 	cout << "OK" << endl;
 
+	// Sorting the structural matrices by the column index
+	cout << "Sorting the matrices by column index...";
+	stiffnessMatrix.sortByColumn(); // Stiffness
+	massMatrix.sortByColumn(); // Mass
+	if ( !dampingMatrix.isEmpty() )
+		dampingMatrix.sortByColumn(); // Damping
+	cout << "OK" << endl;
+
 	// Writing the mapping and structural matrices
 	cout << "Writing the mapping and the structural matrices...";
 	i = stiffnessMatrix.write("matK.prn", OUTPUT_PRECISION);
@@ -366,5 +396,9 @@ int main(){
 	std::chrono::duration<double> duration = endTime - startTime;
 	cout << "Duration: " << duration.count() << " s\n";
 
+	// Pause
+	cout << "Press any key to continue . . .";
+	cin.ignore();
+	cin.get();
 	return 0;
 }
