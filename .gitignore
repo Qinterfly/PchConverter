@@ -3,3 +3,5 @@ test/
 theory/
 x64/*
 .vs/
+Loader.txt
+examples/sim1-berechnung*

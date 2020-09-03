@@ -4,6 +4,20 @@
 
 // The command to perform export from Femap: PARAM,EXTOUT,DMIGPCH
 
+/* There are two ways to specify files for reading:
+	1) The file loader with the name "Loader.txt" ($FILE_LOADER_NAME) located in the directory with the executable. Its content has to be formatted in the following way:
+		< Nastran punch file (with '.pch') >
+		< Nastran punch file (with '.pch') >
+		< Geometry scale > 
+	For example,
+	"
+	examples/beam.pch
+	examples/beam.dat
+	1.0
+	"
+	2) User input
+*/
+
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -19,6 +33,8 @@ using std::string;
 using std::cout;
 using std::cin;
 using std::endl;
+
+using IndexType = size_t;
 
 // A hash function used to hash a pair of any kind 
 struct hash_pair {
@@ -36,29 +52,39 @@ enum class MatrixType { Stiffness, Mass, Damping, Mapping, Null = -1 };
 // A base matrix class
 class StructuralMatrix {
 public:
-	StructuralMatrix() = default;
+	StructuralMatrix(string const& name, string const& outputFileName);
 	~StructuralMatrix() = default;
 	// Info methods
 	bool isEmpty() const { return size_ == 0; } // Check whether the matrix empty or not
-	int size() const { return size_; } // Get the size of the matrix
+	IndexType size() const { return size_; } // Get the size of the matrix
 	// Managing methods
-	void resize(long size); // Change the size of the matrix
+	void resize(IndexType size); // Change the size of the matrix
 	void sortByColumn(); // Sort the matrix by the column index
 	// In-out methods
-	int write(string const& fileName, unsigned short outPrecision) const; // Write the matrix
+	int write(unsigned short outPrecision) const; // Write the matrix
 	// Get the elements of the matrix
-	int& firstInd(int index) { return firstInd_[index]; }
-	int& secondInd(int index) { return secondInd_[index]; }
-	double& value(int index) { return values_[index]; }
+	IndexType& firstInd(IndexType index) { return firstInd_[index]; }
+	IndexType& secondInd(IndexType index) { return secondInd_[index]; }
+	double& value(IndexType index) { return values_[index]; }
 private:
-	int size_ = 0;
-	vector<int> firstInd_;
-	vector<int> secondInd_;
+	string name_;
+	string outputFileName_ = "mat.prn";
+	IndexType size_ = 0;
+	vector<IndexType> firstInd_;
+	vector<IndexType> secondInd_;
 	vector<double> values_;
 };
 
+// Constructor
+StructuralMatrix::StructuralMatrix(string const& name, string const& outputFileName) :
+	name_(name), 
+	outputFileName_(outputFileName)
+{
+
+}
+
 // Changing the size of the structural matrix
-void StructuralMatrix::resize(long size) {
+void StructuralMatrix::resize(IndexType size) {
 	size_ = size;
 	firstInd_.resize(size_);
 	secondInd_.resize(size_);
@@ -67,16 +93,16 @@ void StructuralMatrix::resize(long size) {
 
 // Sorting the structural matrix by the column index
 void StructuralMatrix::sortByColumn() {
-	vector<int> sortIndexes(size_);
+	vector<IndexType> sortIndexes(size_);
 	std::iota(sortIndexes.begin(), sortIndexes.end(), 0);
 	// Copying the current vectors in order to sort them later
-	vector<int> vecFirst = firstInd_;
-	vector<int> vecSecond = secondInd_;
+	vector<IndexType> vecFirst = firstInd_;
+	vector<IndexType> vecSecond = secondInd_;
 	vector<double> vecValues = values_;
 	// Sorting by the column index 
-	std::stable_sort(sortIndexes.begin(), sortIndexes.end(), [&vecSecond](int i, int j) { return vecSecond[i] < vecSecond[j]; });
-	int tInd = 0;
-	for (int i = 0; i != size_; ++i) {
+	std::stable_sort(sortIndexes.begin(), sortIndexes.end(), [&vecSecond](IndexType i, IndexType j) { return vecSecond[i] < vecSecond[j]; });
+	IndexType tInd = 0;
+	for (IndexType i = 0; i != size_; ++i) {
 		tInd = sortIndexes[i];
 		firstInd_[i] = vecFirst[tInd];
 		secondInd_[i] = vecSecond[tInd];
@@ -93,19 +119,23 @@ MatrixType resolveType(string const& strType) {
 	return MatrixType::Null;
 }
 
-// Organizing a text dialog with a user to open a file
+// Open file for reading
+bool openFileWithMessages(string& fileName, std::ifstream& stream) {
+	stream.open(fileName, std::ios::in);
+	bool isOpened = stream.is_open();
+	if (isOpened)
+		cout << "* '" << fileName << "' was successfully opened" << endl;
+	else
+		cout << "* An error occured while opening '" << fileName << "'" << endl;
+	return isOpened;
+}
+
+// Organize a text dialog with a user to open a file
 void organizeOpenFileDialog(string& fileName, std::ifstream& filePch, string const& message) {
 	while (true) {
 		cout << message;
 		cin >> fileName;
-		filePch.open(fileName, std::ios::in);
-		if (filePch.is_open()) {
-			cout << "* '" << fileName << "' was successfully opened" << endl;
-			break;
-		}
-		else {
-			cout << "* An error occured while opening '" << fileName << "'" << endl;
-		}
+		openFileWithMessages(fileName, filePch);
 	}
 }
 
@@ -123,15 +153,15 @@ T organizeNumberDialog(string const& message, T const& hintValue) {
 }
 
 // Writing the structural matrix
-int StructuralMatrix::write(string const& fileName, unsigned short outPrecision) const {
+int StructuralMatrix::write(unsigned short outPrecision) const {
 	std::ofstream file;
-	file.open(fileName, std::ios::out);
+	file.open(outputFileName_, std::ios::out);
 	if (!file.is_open()) {
-		cout << "An error occurred while saving '" << fileName << "'" << endl;
+		cout << "An error occurred while saving '" << outputFileName_ << "'" << endl;
 		return -1;
 	}
 	file.precision(outPrecision);
-	for (int i = 0; i != size_; ++i) {
+	for (IndexType i = 0; i != size_; ++i) {
 		file << std::fixed << std::setw(outPrecision) << firstInd_[i] << std::setw(outPrecision) << secondInd_[i] << ' ';
 		file << std::scientific << '\t' << values_[i] << endl;
 	}
@@ -140,7 +170,7 @@ int StructuralMatrix::write(string const& fileName, unsigned short outPrecision)
 }
 
 // Writing the mapping matrix
-int writeMappingMatrix(string const& fileName, int size, vector<int> const& vecEquNodes, vector<int> const& vecEquDofs, unsigned short outPrecision) {
+int writeMappingMatrix(string const& fileName, IndexType size, vector<IndexType> const& vecEquNodes, vector<IndexType> const& vecEquDofs, unsigned short outPrecision) {
 	std::ofstream file;
 	file.open(fileName, std::ios::out);
 	if ( !file.is_open() ) {
@@ -149,7 +179,7 @@ int writeMappingMatrix(string const& fileName, int size, vector<int> const& vecE
 	}
 	vector<string> const dofsNames = { "UX", "UY", "UZ", "ROTX", "ROTY", "ROTZ" };
 	file << std::setw(outPrecision) << "Matrix Eqn" << std::setw(outPrecision) << "Node" << std::setw(outPrecision) << "DOF" << endl;
-	for (int i = 0; i != size; ++i) {
+	for (IndexType i = 0; i != size; ++i) {
 		file << std::setw(outPrecision) << i + 1;
 		file << std::setw(outPrecision) << vecEquNodes[i] << std::setw(outPrecision) << dofsNames[vecEquDofs[i] - 1] << endl;
 	}
@@ -158,15 +188,15 @@ int writeMappingMatrix(string const& fileName, int size, vector<int> const& vecE
 }
 
 // Writing the nodes file
-int writeNodes(string const& fileName, vector<int> const& indexes, vector<double> const& XCoord, vector<double> const& YCoord, vector<double> const& ZCoord, unsigned short outPrecision) {
+int writeNodes(string const& fileName, vector<IndexType> const& indexes, vector<double> const& XCoord, vector<double> const& YCoord, vector<double> const& ZCoord, unsigned short outPrecision) {
 	std::ofstream file;
 	file.open(fileName, std::ios::out);
 	if (!file.is_open()) {
 		cout << "An error occurred while saving '" << fileName << "'" << endl;
 		return -1;
 	}
-	int size = indexes.size();
-	for (int i = 0; i != size; ++i) {
+	IndexType size = indexes.size();
+	for (IndexType i = 0; i != size; ++i) {
 		file << std::fixed << std::setw(outPrecision) << indexes[i];
 		file << std::scientific << '\t' << XCoord[i] << '\t' << YCoord[i] << '\t' << ZCoord[i] << endl;
 	}
@@ -180,17 +210,37 @@ int main(){
 	const unsigned short LENGTH_MATRIX_HEADER = 6;
 	const unsigned short NUMBER_OF_SKIPPED_SYMBOLS = 16384;
 	const unsigned short OUTPUT_PRECISION = 10;
- 
-	// Opening an input Nastran punch file
+	const string FILE_LOADER_NAME = "Loader.txt";
+		
 	string fileName;
-	std::ifstream filePch;
-	organizeOpenFileDialog(fileName, filePch, "Specify the path of the Nastran punch file (with '.pch'): ");
-	
-	// Opening an analysis input file
-	std::ifstream fileDat;
+	std::ifstream filePch, fileDat;
 	double geometryScaleFactor = 1.0;
-	organizeOpenFileDialog(fileName, fileDat, "Specify the path of the analysis input file (with '.dat'): ");
-	geometryScaleFactor = organizeNumberDialog("Specify the geometry scale factor: ", 1.0);
+	bool isRead = true;
+
+	// Reading input files according to a loader
+	std::ifstream fileLoader(FILE_LOADER_NAME, std::ios::in);
+	if (fileLoader.is_open()) {
+		cout << "Reading files according to the file loader..." << endl;
+		// Punch file
+		fileLoader >> fileName;
+		isRead = isRead && openFileWithMessages(fileName, filePch);
+		// Analysis input file
+		fileLoader >> fileName;
+		isRead = isRead && openFileWithMessages(fileName, fileDat);
+		// Scale
+		fileLoader >> geometryScaleFactor;
+		if (!isRead)
+			cout << "The format of the file loader is not correct. Switching to user input..." << endl;
+	} 
+
+	// Reading input files from the keyboard
+	if (!isRead){
+		// Opening an input Nastran punch file
+		organizeOpenFileDialog(fileName, filePch, "Specify the path of the Nastran punch file (with '.pch'): ");
+		// Opening an analysis input file
+		organizeOpenFileDialog(fileName, fileDat, "Specify the path of the analysis input file (with '.dat'): ");
+		geometryScaleFactor = organizeNumberDialog("Specify the geometry scale factor: ", 1.0);
+	}
 
 	auto startTime = std::chrono::steady_clock::now();
 
@@ -198,20 +248,22 @@ int main(){
 	cout << "Extracting the nodal coordinates from the analysis input file...";
 	string tempString;
 		// Counting the nodes number
-	int nNodes = 0;
+	IndexType nNodes = 0;
 	bool isGrid = false;
 	while ( !fileDat.eof() ) {
 		fileDat >> tempString;
-		if (!tempString.compare("GRID")) {
+		if (tempString.find("GRID") != std::string::npos) {
 			++nNodes;
 			isGrid = true;
+			if (tempString[tempString.size() - 1] == '*')
+				fileDat.ignore(NUMBER_OF_SKIPPED_SYMBOLS, '\n');
 		} else if (isGrid) {
 			break;
 		}
 		fileDat.ignore(NUMBER_OF_SKIPPED_SYMBOLS, '\n');
 	}
 		// Reading the nodes coordinates
-	vector<int> nodesNumbers(nNodes);
+	vector<IndexType> nodesNumbers(nNodes);
 	vector<double> nodesX(nNodes);
 	vector<double> nodesY(nNodes);
 	vector<double> nodesZ(nNodes);
@@ -219,11 +271,16 @@ int main(){
 	isGrid = false;
 	fileDat.clear();
 	fileDat.seekg(0);
-	int j;
+	IndexType j;
 	while (!fileDat.eof()) {
 		fileDat >> tempString;
-		if (!tempString.compare("GRID")) {
-			fileDat >> nodesNumbers[nNodes] >> j >> nodesX[nNodes] >> nodesY[nNodes] >> nodesZ[nNodes];
+		if (tempString.find("GRID") != std::string::npos) {
+			fileDat >> nodesNumbers[nNodes] >> j >> nodesX[nNodes] >> nodesY[nNodes];
+			if (tempString[tempString.size() - 1] == '*') {
+				fileDat.ignore(NUMBER_OF_SKIPPED_SYMBOLS, '\n');
+				fileDat >> tempString;
+			}
+			fileDat >> nodesZ[nNodes];
 			// Scaling 
 			nodesX[nNodes] *= geometryScaleFactor;
 			nodesY[nNodes] *= geometryScaleFactor;
@@ -239,18 +296,18 @@ int main(){
 	cout << "OK" << endl;
 
 	// Announcing of the structural matrices
-	StructuralMatrix stiffnessMatrix;
-	StructuralMatrix massMatrix;
-	StructuralMatrix dampingMatrix;
+	StructuralMatrix stiffnessMatrix("stiffness", "matK.prn");
+	StructuralMatrix massMatrix("mass", "matM.prn");
+	StructuralMatrix dampingMatrix("damping", "matD.prn");
 
 	// Counting the numbers of nonzero elements of the matrices
 	cout << "Counting the numbers of nonzero elements of the matrices...";
 	bool isMatrixChanged = false;
 	StructuralMatrix* ptrMatrix = nullptr;
-	int nNonzeroElements = 0; 
-	int nMatrices = 0;
+	IndexType nNonzeroElements = 0;
+	IndexType nMatrices = 0;
 	bool isExit = false;
-	while ( !filePch.eof() ) {
+	while (!filePch.eof()) {
 		filePch >> tempString; // DMIG or DMIG* or *
 		// Check if the matrix was changed or not
 		isMatrixChanged = false;
@@ -277,34 +334,34 @@ int main(){
 				break;
 			case MatrixType::Null:
 				ptrMatrix = nullptr;
-				break;
+				continue;
 			}
 			if (isExit)
 				break;
 			// Getting the size of matrices
-			for (int i = 0; i != LENGTH_MATRIX_HEADER - 2; ++i)
+			for (unsigned short i = 0; i != LENGTH_MATRIX_HEADER - 2; ++i)
 				filePch >> tempString;
 			filePch >> nMatrices; // Size of the structural matrices (free model)
 			nNonzeroElements = 0;
-		} else if ( !tempString.compare("*") ){
+		} else if (ptrMatrix != nullptr && !tempString.compare("*")){
 			++nNonzeroElements;
 		}
 	}
 	cout << "OK" << endl;
 
-	// Reading the mappnig matrix
+	// Reading the mapping matrix
 	cout << "Reading the mapping matrix...";
-	vector<int> vecEquNodes(nMatrices);
-	vector<int> vecEquDofs(nMatrices);
-	std::unordered_map<std::pair<int, int>, int, hash_pair> mapEqu; // Associative container which is used to get the equation number by the node number and its dof  
-	int i;
+	vector<IndexType> vecEquNodes(nMatrices);
+	vector<IndexType> vecEquDofs(nMatrices);
+	std::unordered_map<std::pair<IndexType, IndexType>, IndexType, hash_pair> mapEqu; // Associative container which is used to get an equation number by a node number and its dof  
+	IndexType i;
 	for (i = 0; i != 2; ++i)
 		filePch.ignore(NUMBER_OF_SKIPPED_SYMBOLS, '\n');
 	nMatrices = 0; // Real number of dofs
 	double tempValue;
 	while ( true ) {
 		filePch >> tempString;
-		if ( filePch.eof() || !tempString.compare("DMIG") )
+		if (filePch.eof() || !tempString.compare("DMIG"))
 			break;
 		filePch >> vecEquNodes[nMatrices] >> vecEquDofs[nMatrices] >> tempValue;
 		mapEqu.emplace(std::make_pair(vecEquNodes[nMatrices], vecEquDofs[nMatrices]), nMatrices + 1);
@@ -320,12 +377,12 @@ int main(){
 	cout << "Filling the structural matrices...";
 	filePch.clear();
 	filePch.seekg(0);
-	int iEqu = 0, jEqu = 0;
-	while ( !filePch.eof() ) {
+	IndexType iEqu = 0, jEqu = 0;
+	while (!filePch.eof()) {
 		filePch >> tempString; // DMIG or DMIG* or *
 		// Check if the matrix was changed or not
 		isMatrixChanged = false;
-		if ( !tempString.compare("DMIG") ) {
+		if (!tempString.compare("DMIG")) {
 			// Reading the type of the matrix
 			isMatrixChanged = true;
 			filePch >> tempString;
@@ -345,25 +402,25 @@ int main(){
 				break;
 			case MatrixType::Null:
 				ptrMatrix = nullptr;
-				break;
+				continue;
 			}
-			if ( isExit )
+			if (isExit)
 				break;
-			// Getting the size of matrices
-			for (i = 0; i != LENGTH_MATRIX_HEADER - 2; ++i)
-				filePch >> tempString;
+			filePch.ignore(NUMBER_OF_SKIPPED_SYMBOLS, '\n');
 			nNonzeroElements = 0; 
-		} else if ( !tempString.compare("DMIG*") ) { // Column index
-			filePch >> tempString >> i >> j;
-			jEqu = mapEqu[std::make_pair(i, j)];
-		} else if ( !tempString.compare("*") ) { // Row index
-			filePch >> i >> j >> tempValue;
-			iEqu = mapEqu[std::make_pair(i, j)];
-			// Filling the current matrix (swap indexes: lower triangle -> upper triangle)
-			ptrMatrix->firstInd(nNonzeroElements) = jEqu;
-			ptrMatrix->secondInd(nNonzeroElements) = iEqu;
-			ptrMatrix->value(nNonzeroElements) = tempValue;
-			++nNonzeroElements;
+		} else if (ptrMatrix != nullptr) {
+			if (!tempString.compare("DMIG*")) {	   // Column Index
+				filePch >> tempString >> i >> j;
+				jEqu = mapEqu[std::make_pair(i, j)];
+			} else if (!tempString.compare("*")) { // Row index
+				filePch >> i >> j >> tempValue;
+				iEqu = mapEqu[std::make_pair(i, j)];
+				// Filling the current matrix (swap indexes: lower triangle -> upper triangle)
+				ptrMatrix->firstInd(nNonzeroElements) = jEqu;
+				ptrMatrix->secondInd(nNonzeroElements) = iEqu;
+				ptrMatrix->value(nNonzeroElements) = tempValue;
+				++nNonzeroElements;
+			}
 		}
 	}
 	filePch.close();
@@ -379,10 +436,10 @@ int main(){
 
 	// Writing the mapping and structural matrices
 	cout << "Writing the mapping and the structural matrices...";
-	i = stiffnessMatrix.write("matK.prn", OUTPUT_PRECISION);
-	i = massMatrix.write("matM.prn", OUTPUT_PRECISION);
+	i = stiffnessMatrix.write(OUTPUT_PRECISION);
+	i = massMatrix.write(OUTPUT_PRECISION);
 	if ( !dampingMatrix.isEmpty() )
-		i = dampingMatrix.write("matD.prn", OUTPUT_PRECISION);
+		i = dampingMatrix.write(OUTPUT_PRECISION);
 	i = writeMappingMatrix("matK.mapping", nMatrices, vecEquNodes, vecEquDofs, OUTPUT_PRECISION);
 	if ( i == 0 ) cout << "OK" << endl;
 		
