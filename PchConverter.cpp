@@ -7,7 +7,7 @@
 /* There are two ways to specify files for reading:
 	1) The file loader with the name "Loader.txt" ($FILE_LOADER_NAME) located in the directory with the executable. Its content has to be formatted in the following way:
 		< Nastran punch file (with '.pch') >
-		< Nastran punch file (with '.pch') >
+		< Analysis input file (with '.dat') >
 		< Geometry scale > 
 	For example,
 	"
@@ -47,18 +47,26 @@ struct hash_pair {
 	}
 };
 
+template <typename T>
+void releaseVector(vector<T>& vec) {
+	vec.clear();
+	vec.shrink_to_fit();
+}
+
 enum class MatrixType { Stiffness, Mass, Damping, Mapping, Null = -1 };
 
 // A base matrix class
 class StructuralMatrix {
 public:
 	StructuralMatrix(string const& name, string const& outputFileName);
-	~StructuralMatrix() = default;
+	~StructuralMatrix();
 	// Info methods
-	bool isEmpty() const { return size_ == 0; } // Check whether the matrix empty or not
-	IndexType size() const { return size_; } // Get the size of the matrix
+	bool isEmpty() const { return realSize_ == 0; } // Check whether the matrix empty or not
+	IndexType size() const { return realSize_; } // Get the size of the matrix
+	string const& name() const { return name_; } // Get the name of the matrix
 	// Managing methods
-	void resize(IndexType size); // Change the size of the matrix
+	void specifySize(IndexType size); // Remember size for further allocation
+	void resize(); // Change the size of the matrix
 	void sortByColumn(); // Sort the matrix by the column index
 	// In-out methods
 	int write(unsigned short outPrecision) const; // Write the matrix
@@ -69,7 +77,8 @@ public:
 private:
 	string name_;
 	string outputFileName_ = "mat.prn";
-	IndexType size_ = 0;
+	IndexType realSize_ = 0;
+	IndexType specifiedSize_ = 0;
 	vector<IndexType> firstInd_;
 	vector<IndexType> secondInd_;
 	vector<double> values_;
@@ -83,17 +92,34 @@ StructuralMatrix::StructuralMatrix(string const& name, string const& outputFileN
 
 }
 
+// Destructor
+
+StructuralMatrix::~StructuralMatrix() {
+	realSize_ = 0;
+	specifiedSize_ = 0;
+	releaseVector(firstInd_);
+	releaseVector(secondInd_);
+	releaseVector(values_);
+}
+
+// Remember size for further allocation
+void StructuralMatrix::specifySize(IndexType size) {
+	specifiedSize_ = size;
+}
+
 // Changing the size of the structural matrix
-void StructuralMatrix::resize(IndexType size) {
-	size_ = size;
-	firstInd_.resize(size_);
-	secondInd_.resize(size_);
-	values_.resize(size_);
+void StructuralMatrix::resize() {
+	if (specifiedSize_ <= 0)
+		return;
+	realSize_ = specifiedSize_;
+	firstInd_.resize(realSize_);
+	secondInd_.resize(realSize_);
+	values_.resize(realSize_);
 }
 
 // Sorting the structural matrix by the column index
 void StructuralMatrix::sortByColumn() {
-	vector<IndexType> sortIndexes(size_);
+	vector<IndexType> sortIndexes(realSize_);
 	std::iota(sortIndexes.begin(), sortIndexes.end(), 0);
 	// Copying the current vectors in order to sort them later
 	vector<IndexType> vecFirst = firstInd_;
@@ -102,7 +128,7 @@ void StructuralMatrix::sortByColumn() {
 	// Sorting by the column index 
 	std::stable_sort(sortIndexes.begin(), sortIndexes.end(), [&vecSecond](IndexType i, IndexType j) { return vecSecond[i] < vecSecond[j]; });
 	IndexType tInd = 0;
-	for (IndexType i = 0; i != size_; ++i) {
+	for (IndexType i = 0; i != realSize_; ++i) {
 		tInd = sortIndexes[i];
 		firstInd_[i] = vecFirst[tInd];
 		secondInd_[i] = vecSecond[tInd];
@@ -161,7 +187,7 @@ int StructuralMatrix::write(unsigned short outPrecision) const {
 		return -1;
 	}
 	file.precision(outPrecision);
-	for (IndexType i = 0; i != size_; ++i) {
+	for (IndexType i = 0; i != realSize_; ++i) {
 		file << std::fixed << std::setw(outPrecision) << firstInd_[i] << std::setw(outPrecision) << secondInd_[i] << ' ';
 		file << std::scientific << '\t' << values_[i] << endl;
 	}
@@ -220,7 +246,7 @@ int main(){
 	// Reading input files according to a loader
 	std::ifstream fileLoader(FILE_LOADER_NAME, std::ios::in);
 	if (fileLoader.is_open()) {
-		cout << "Reading files according to the file loader..." << endl;
+		cout << "Reading files according to the file loader:" << endl;
 		// Punch file
 		fileLoader >> fileName;
 		isRead = isRead && openFileWithMessages(fileName, filePch);
@@ -295,6 +321,17 @@ int main(){
 	fileDat.close();
 	cout << "OK" << endl;
 
+	// Writing the nodes file
+	cout << "Writing the nodes file...";
+	IndexType i;
+	i = writeNodes("nodes2.prn", nodesNumbers, nodesX, nodesY, nodesZ, OUTPUT_PRECISION);
+	if (i == 0) cout << "OK" << endl;
+	// Releasing nodes
+	releaseVector(nodesNumbers);
+	releaseVector(nodesX);
+	releaseVector(nodesY);
+	releaseVector(nodesZ);
+
 	// Announcing of the structural matrices
 	StructuralMatrix stiffnessMatrix("stiffness", "matK.prn");
 	StructuralMatrix massMatrix("mass", "matM.prn");
@@ -317,7 +354,7 @@ int main(){
 			filePch >> tempString;
 			// Resizing the matrices
 			if (ptrMatrix != nullptr)
-				ptrMatrix->resize(nNonzeroElements);
+				ptrMatrix->specifySize(nNonzeroElements); // (!) Memory is not allocated here
 			// Check the type of the matrix
 			switch ( resolveType(tempString) ) {
 			case MatrixType::Stiffness:
@@ -354,7 +391,6 @@ int main(){
 	vector<IndexType> vecEquNodes(nMatrices);
 	vector<IndexType> vecEquDofs(nMatrices);
 	std::unordered_map<std::pair<IndexType, IndexType>, IndexType, hash_pair> mapEqu; // Associative container which is used to get an equation number by a node number and its dof  
-	IndexType i;
 	for (i = 0; i != 2; ++i)
 		filePch.ignore(NUMBER_OF_SKIPPED_SYMBOLS, '\n');
 	nMatrices = 0; // Real number of dofs
@@ -374,7 +410,6 @@ int main(){
 	isExit = false;
 
 	// Filling the structural matrices
-	cout << "Filling the structural matrices...";
 	filePch.clear();
 	filePch.seekg(0);
 	IndexType iEqu = 0, jEqu = 0;
@@ -386,6 +421,18 @@ int main(){
 			// Reading the type of the matrix
 			isMatrixChanged = true;
 			filePch >> tempString;
+			// Sorting and writing the previous matrix
+			if (ptrMatrix != nullptr) {
+				cout << "OK" << endl;
+				string const& matrixName = ptrMatrix->name();
+				cout << "Sorting the " << matrixName << " matrix by column index...";
+				ptrMatrix->sortByColumn();
+				cout << "OK" << endl;
+				cout << "Writing the " << matrixName << " matrix...";
+				i = ptrMatrix->write(OUTPUT_PRECISION);
+				if (i == 0) cout << "OK" << endl;
+				ptrMatrix->~StructuralMatrix();
+			}
 			// Check the type of the matrix
 			switch ( resolveType(tempString) ) {
 			case MatrixType::Stiffness:
@@ -406,6 +453,8 @@ int main(){
 			}
 			if (isExit)
 				break;
+			ptrMatrix->resize();
+			cout << "Filling the " << ptrMatrix->name() << " matrix...";
 			filePch.ignore(NUMBER_OF_SKIPPED_SYMBOLS, '\n');
 			nNonzeroElements = 0; 
 		} else if (ptrMatrix != nullptr) {
@@ -424,30 +473,12 @@ int main(){
 		}
 	}
 	filePch.close();
-	cout << "OK" << endl;
-
-	// Sorting the structural matrices by the column index
-	cout << "Sorting the matrices by column index...";
-	stiffnessMatrix.sortByColumn(); // Stiffness
-	massMatrix.sortByColumn(); // Mass
-	if ( !dampingMatrix.isEmpty() )
-		dampingMatrix.sortByColumn(); // Damping
-	cout << "OK" << endl;
 
 	// Writing the mapping and structural matrices
-	cout << "Writing the mapping and the structural matrices...";
-	i = stiffnessMatrix.write(OUTPUT_PRECISION);
-	i = massMatrix.write(OUTPUT_PRECISION);
-	if ( !dampingMatrix.isEmpty() )
-		i = dampingMatrix.write(OUTPUT_PRECISION);
+	cout << "Writing the mapping matrix...";
 	i = writeMappingMatrix("matK.mapping", nMatrices, vecEquNodes, vecEquDofs, OUTPUT_PRECISION);
 	if ( i == 0 ) cout << "OK" << endl;
 		
-	// Writing the nodes file
-	cout << "Writing the nodes file...";
-	i = writeNodes("nodes2.prn", nodesNumbers, nodesX, nodesY, nodesZ, OUTPUT_PRECISION);
-	if (i == 0) cout << "OK" << endl;
-
 	// Evaluation of the duration of the conversion
 	auto endTime = std::chrono::steady_clock::now();
 	std::chrono::duration<double> duration = endTime - startTime;

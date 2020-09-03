@@ -15,3 +15,19 @@ The program can be easily compiled in the following way: g++ -o PchConverter Pch
 - Sparse damping matrix
 - Mapping file
 - Nodes coordinates
+
+## User interface
+There are two ways to specify the input files:
+1. The file loader with the name "Loader.txt" ($FILE_LOADER_NAME) located in the directory with the executable. Its content has to be formatted in the following way:
+'
+<Nastran punch file>
+<Analysis input file>
+<Geometry scale> 
+'
+For example,
+'
+examples/beam.pch
+examples/beam.dat
+1.0
+'
+1. User input
