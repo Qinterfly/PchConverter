@@ -4,20 +4,6 @@
 
 // The command to perform export from Femap: PARAM,EXTOUT,DMIGPCH
 
-/* There are two ways to specify files for reading:
-	1) The file loader with the name "Loader.txt" ($FILE_LOADER_NAME) located in the directory with the executable. Its content has to be formatted in the following way:
-		< Nastran punch file (with '.pch') >
-		< Analysis input file (with '.dat') >
-		< Geometry scale > 
-	For example,
-	"
-	examples/beam.pch
-	examples/beam.dat
-	1.0
-	"
-	2) User input
-*/
-
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -241,11 +227,12 @@ int main(){
 	string fileName;
 	std::ifstream filePch, fileDat;
 	double geometryScaleFactor = 1.0;
-	bool isRead = true;
+	bool isRead = false;
 
 	// Reading input files according to a loader
 	std::ifstream fileLoader(FILE_LOADER_NAME, std::ios::in);
-	if (fileLoader.is_open()) {
+	isRead = fileLoader.is_open();
+	if (isRead) {
 		cout << "Reading files according to the file loader:" << endl;
 		// Punch file
 		fileLoader >> fileName;
