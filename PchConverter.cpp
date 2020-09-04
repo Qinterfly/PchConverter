@@ -79,7 +79,6 @@ StructuralMatrix::StructuralMatrix(string const& name, string const& outputFileN
 }
 
 // Destructor
-
 StructuralMatrix::~StructuralMatrix() {
 	realSize_ = 0;
 	specifiedSize_ = 0;
@@ -147,18 +146,19 @@ void organizeOpenFileDialog(string& fileName, std::ifstream& filePch, string con
 	while (true) {
 		cout << message;
 		cin >> fileName;
-		openFileWithMessages(fileName, filePch);
+		if (openFileWithMessages(fileName, filePch))
+			break;
 	}
 }
 
 // Organizing a text dialog to get a number
-template < typename T >
+template <typename T>
 T organizeNumberDialog(string const& message, T const& hintValue) {
 	T value;
 	while ( true ) {
 		cout << message;
 		cin >> value;
-		if ( !cin.fail() )
+		if (!cin.fail())
 			break;
 	}
 	return value;
