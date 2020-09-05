@@ -26,8 +26,8 @@ There are two ways to specify the input files:
 ```
 For example,
 ```
-examples/beam.pch
-examples/beam.dat
+../examples/beam.pch
+../examples/beam.dat
 1.0
 ```
 2. User input
